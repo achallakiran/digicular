@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Digital Lenticular</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            overscroll-behavior-y: contain; 
+            touch-action: none; /* Prevent accidental scrolling */
+            background-color: #000;
+        }
+        .canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        .lenticular-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* cover or contain based on preference */
+            transition: opacity 0.05s linear;
+            opacity: 0;
+        }
+        /* Startup overlay styling */
+        #startOverlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body class="text-white h-screen w-screen overflow-hidden font-sans">
+
+    <div class="canvas-container" id="imageContainer">
+        <!-- Images will be injected here automatically -->
+    </div>
+
+    <!-- Start Overlay (Required for iOS to grant sensor permissions) -->
+    <div id="startOverlay">
+        <h1 class="text-3xl font-bold mb-4 tracking-wider">LENTICULAR</h1>
+        <p class="text-gray-300 mb-8 text-center px-6">Hold your phone steady,<br>then tap the button below.</p>
+        
+        <button id="tiltBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-full shadow-lg font-bold text-lg transition-transform transform hover:scale-105 active:scale-95">
+            Enable Tilt
+        </button>
+        <p id="statusText" class="text-gray-400 text-sm mt-4 hidden">Requesting access...</p>
+    </div>
+
+    <script>
+        const imageContainer = document.getElementById('imageContainer');
+        const startOverlay = document.getElementById('startOverlay');
+        const tiltBtn = document.getElementById('tiltBtn');
+        const statusText = document.getElementById('statusText');
+        
+        // IMPORTANT: These names must exactly match the files in your GitHub repo!
+        const imageFiles = ['image1.png', 'image2.png', 'image3.png'];
+        let layers = [];
+
+        // 1. Preload the images from the GitHub repo
+        function loadImages() {
+            imageFiles.forEach((fileName) => {
+                const img = document.createElement('img');
+                img.src = fileName;
+                img.className = 'lenticular-layer';
+                
+                // Show the middle image by default before tilting starts
+                if (fileName === 'image2.png') {
+                    img.style.opacity = 1;
+                }
+                
+                imageContainer.appendChild(img);
+                layers.push(img);
+            });
+        }
+
+        // 2. Crossfade math
+        function updateOpacities(progress) {
+            if (layers.length === 0) return;
+
+            const maxIndex = layers.length - 1;
+            const scaledProgress = progress * maxIndex;
+            const baseIndex = Math.floor(scaledProgress);
+            const fraction = scaledProgress - baseIndex;
+
+            layers.forEach((layer, index) => {
+                if (index === baseIndex) {
+                    layer.style.opacity = 1 - fraction;
+                } else if (index === baseIndex + 1) {
+                    layer.style.opacity = fraction;
+                } else {
+                    layer.style.opacity = 0;
+                }
+            });
+        }
+
+        // 3. Process Gyroscope data
+        function handleOrientation(event) {
+            let gamma = event.gamma; // Left/Right tilt
+            if (gamma === null) return;
+
+            // Sensitivity setting: -35 to 35 degrees covers the whole animation
+            const maxTilt = 35;
+            gamma = Math.max(-maxTilt, Math.min(maxTilt, gamma));
+
+            // Map -35/35 to 0.0/1.0
+            const progress = (gamma + maxTilt) / (maxTilt * 2);
+            updateOpacities(progress);
+        }
+
+        // 4. Request Permission & Start (Attached to the button)
+        tiltBtn.addEventListener('click', async () => {
+            statusText.classList.remove('hidden');
+            
+            // iOS 13+ requirement
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        startOverlay.style.display = 'none'; // Hide overlay, reveal image!
+                    } else {
+                        statusText.textContent = "Sensor permission denied in settings.";
+                        statusText.classList.add('text-red-400');
+                    }
+                } catch (error) {
+                    statusText.textContent = "Error: Make sure this is hosted on HTTPS (GitHub Pages).";
+                    statusText.classList.add('text-red-400');
+                }
+            } else {
+                // Android & older iOS
+                window.addEventListener('deviceorientation', handleOrientation);
+                startOverlay.style.display = 'none'; // Hide overlay, reveal image!
+            }
+        });
+
+        // Initialize images on page load
+        window.onload = loadImages;
+    </script>
+</body>
+</html>
